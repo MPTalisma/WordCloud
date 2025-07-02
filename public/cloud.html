@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Word Cloud</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.1.0/src/wordcloud2.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <style>#wordcloud { width: 100vw; height: 100vh; }</style>
+</head>
+<body>
+  <div id="wordcloud"></div>
+  <script>
+    const socket = io();
+    socket.on('newWords', words => {
+      const frequency = {};
+      words.forEach(word => {
+        frequency[word] = (frequency[word] || 0) + 1;
+      });
+      const entries = Object.entries(frequency).map(([text, size]) => [text, size * 10]);
+      WordCloud(document.getElementById('wordcloud'), { list: entries });
+    });
+  </script>
+</body>
+</html>
