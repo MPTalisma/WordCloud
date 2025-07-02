@@ -1,94 +1,97 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Word Cloud</title>
+  <title>Live Word Cloud (D3)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://unpkg.com/d3-cloud/build/d3.layout.cloud.js"></script>
   <style>
     html, body {
       margin: 0;
       padding: 0;
+      background: #f0f7ff;
       font-family: 'Inter', sans-serif;
-      background-color: #f0f7ff;
+      width: 100vw;
       height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      overflow: hidden;
     }
 
-    #cloud-container {
-      max-width: 90vw;
-      max-height: 90vh;
-      overflow-y: auto;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: center;
-      gap: 12px;
-      padding: 1rem;
+    #cloud {
+      width: 100%;
+      height: 100%;
     }
 
-    .word-box {
-      display: inline-block;
-      padding: 8px 16px;
-      background-color: #ffffff;
-      border-radius: 20px;
-      font-weight: 500;
-      color: #2e73f2;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-      animation: fadeIn 0.4s ease;
-      white-space: nowrap;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.8); }
-      to { opacity: 1; transform: scale(1); }
+    text {
+      font-family: 'Inter', sans-serif;
+      cursor: default;
+      transition: transform 0.3s ease;
     }
   </style>
 </head>
 <body>
-  <div id="cloud-container"></div>
+  <svg id="cloud"></svg>
 
   <script>
     const socket = io();
-    const container = document.getElementById('cloud-container');
-    const wordCache = {};
+    const wordCounts = {};
 
-    function renderWords(words) {
-      const frequency = {};
-      words.forEach(word => {
-        frequency[word] = (frequency[word] || 0) + 1;
-      });
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const svg = d3.select("#cloud")
+                  .attr("width", width)
+                  .attr("height", height);
+    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-      const entries = Object.entries(frequency).sort((a, b) => b[1] - a[1]);
-
-      entries.forEach(([word, count]) => {
-        const fontSize = `${Math.min(24 + count * 8, 60)}px`;
-
-        if (wordCache[word]) {
-          const el = wordCache[word];
-          if (el.style.fontSize !== fontSize) {
-            el.style.fontSize = fontSize;
-            el.style.transform = 'scale(1.15)';
-            setTimeout(() => el.style.transform = 'scale(1)', 200);
-          }
-        } else {
-          const span = document.createElement('span');
-          span.className = 'word-box';
-          span.textContent = word;
-          span.style.fontSize = fontSize;
-          container.appendChild(span);
-          wordCache[word] = span;
-        }
-      });
+    function draw(words) {
+      g.selectAll("text")
+        .data(words, d => d.text)
+        .join(
+          enter => enter.append("text")
+                        .text(d => d.text)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", d => d.size)
+                        .style("fill", "#2e73f2")
+                        .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+                        .style("opacity", 0)
+                        .transition().duration(500)
+                        .style("opacity", 1),
+          update => update.transition().duration(500)
+                          .attr("font-size", d => d.size)
+                          .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`),
+          exit => exit.transition().duration(300)
+                      .style("opacity", 0)
+                      .remove()
+        );
     }
 
-    socket.on('newWords', renderWords);
+    function updateWordCloud(allWords) {
+      allWords.forEach(word => {
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      });
+
+      const entries = Object.entries(wordCounts)
+                            .map(([text, count]) => ({
+                              text,
+                              size: 12 + count * 10
+                            }));
+
+      d3.layout.cloud()
+        .size([width, height])
+        .words(entries)
+        .padding(5)
+        .rotate(() => ~~(Math.random() * 2) * 90)
+        .font("Inter")
+        .fontSize(d => d.size)
+        .on("end", draw)
+        .start();
+    }
+
+    socket.on("newWords", updateWordCloud);
   </script>
 </body>
 </html>
+
 
 
 
