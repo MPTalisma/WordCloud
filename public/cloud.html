@@ -42,32 +42,42 @@
 </head>
 <body>
   <div id="cloud-container"></div>
-
   <script>
-    const socket = io();
+  const socket = io();
+  const container = document.getElementById('cloud-container');
 
-    function renderWords(words) {
-      const container = document.getElementById('cloud-container');
-      container.innerHTML = '';
+  const wordCache = {}; // Stores existing DOM elements and counts
 
-      // Calculate frequencies
-      const frequency = {};
-      words.forEach(word => {
-        frequency[word] = (frequency[word] || 0) + 1;
-      });
+  function renderWords(words) {
+    // Count frequencies
+    const frequency = {};
+    words.forEach(word => {
+      frequency[word] = (frequency[word] || 0) + 1;
+    });
 
-      // Sort by frequency and render
-      const entries = Object.entries(frequency).sort((a, b) => b[1] - a[1]);
-      entries.forEach(([text, count]) => {
+    Object.entries(frequency).forEach(([text, count]) => {
+      if (wordCache[text]) {
+        // Already exists → just update font size if needed
+        const el = wordCache[text];
+        const newSize = `${Math.min(24 + count * 8, 60)}px`;
+        if (el.style.fontSize !== newSize) {
+          el.style.fontSize = newSize;
+          el.style.transform = 'scale(1.1)';
+          setTimeout(() => el.style.transform = 'scale(1)', 200); // Animate bump
+        }
+      } else {
+        // New word → create and animate in
         const span = document.createElement('span');
         span.className = 'word-box';
         span.textContent = text;
         span.style.fontSize = `${Math.min(24 + count * 8, 60)}px`;
         container.appendChild(span);
-      });
-    }
+        wordCache[text] = span;
+      }
+    });
+  }
 
-    socket.on('newWords', renderWords);
-  </script>
+  socket.on('newWords', renderWords);
+</script>
 </body>
 </html>
