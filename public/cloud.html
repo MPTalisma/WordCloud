@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Live Word Cloud</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
@@ -14,70 +15,76 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
+      padding: 1rem;
+      box-sizing: border-box;
     }
-    .word-box {
-      display: inline-block;
-      background-color: #fff;
-      color: #2e73f2;
-      padding: 8px 16px;
-      margin: 8px;
-      border-radius: 18px;
-      font-weight: 500;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      transition: transform 0.4s ease, font-size 0.4s ease;
-      animation: fadeIn 0.6s ease;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.8); }
-      to { opacity: 1; transform: scale(1); }
-    }
+
     #cloud-container {
-      max-width: 80%;
+      max-width: 90vw;
+      max-height: 90vh;
+      padding: 1rem;
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
+      gap: 12px;
+      overflow-y: auto;
+    }
+
+    .word-box {
+      background-color: #ffffff;
+      color: #2e73f2;
+      padding: 8px 16px;
+      border-radius: 18px;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease, font-size 0.3s ease;
+      animation: fadeIn 0.4s ease;
+      display: inline-block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
     }
   </style>
 </head>
 <body>
   <div id="cloud-container"></div>
+
   <script>
-  const socket = io();
-  const container = document.getElementById('cloud-container');
+    const socket = io();
+    const container = document.getElementById('cloud-container');
+    const wordCache = {}; // Keep track of rendered words
 
-  const wordCache = {}; // Stores existing DOM elements and counts
+    function renderWords(words) {
+      const frequency = {};
+      words.forEach(word => {
+        frequency[word] = (frequency[word] || 0) + 1;
+      });
 
-  function renderWords(words) {
-    // Count frequencies
-    const frequency = {};
-    words.forEach(word => {
-      frequency[word] = (frequency[word] || 0) + 1;
-    });
+      Object.entries(frequency).forEach(([text, count]) => {
+        const fontSize = `${Math.min(24 + count * 8, 60)}px`;
 
-    Object.entries(frequency).forEach(([text, count]) => {
-      if (wordCache[text]) {
-        // Already exists → just update font size if needed
-        const el = wordCache[text];
-        const newSize = `${Math.min(24 + count * 8, 60)}px`;
-        if (el.style.fontSize !== newSize) {
-          el.style.fontSize = newSize;
-          el.style.transform = 'scale(1.1)';
-          setTimeout(() => el.style.transform = 'scale(1)', 200); // Animate bump
+        if (wordCache[text]) {
+          const el = wordCache[text];
+          if (el.style.fontSize !== fontSize) {
+            el.style.fontSize = fontSize;
+            el.style.transform = 'scale(1.1)';
+            setTimeout(() => el.style.transform = 'scale(1)', 200);
+          }
+        } else {
+          const span = document.createElement('span');
+          span.className = 'word-box';
+          span.textContent = text;
+          span.style.fontSize = fontSize;
+          container.appendChild(span);
+          wordCache[text] = span;
         }
-      } else {
-        // New word → create and animate in
-        const span = document.createElement('span');
-        span.className = 'word-box';
-        span.textContent = text;
-        span.style.fontSize = `${Math.min(24 + count * 8, 60)}px`;
-        container.appendChild(span);
-        wordCache[text] = span;
-      }
-    });
-  }
+      });
+    }
 
-  socket.on('newWords', renderWords);
-</script>
+    socket.on('newWords', renderWords);
+  </script>
 </body>
 </html>
