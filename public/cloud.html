@@ -4,7 +4,6 @@
   <title>Live Word Cloud</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
   <style>
     html, body {
@@ -12,61 +11,84 @@
       padding: 0;
       font-family: 'Inter', sans-serif;
       background-color: #f0f7ff;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    #wordcloud {
-      display: block;
-      width: 100vw;
       height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #cloud-container {
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 1rem;
+    }
+
+    .word-box {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: #ffffff;
+      border-radius: 20px;
+      font-weight: 500;
+      color: #2e73f2;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      animation: fadeIn 0.4s ease;
+      white-space: nowrap;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
     }
   </style>
 </head>
 <body>
-  <canvas id="wordcloud"></canvas>
+  <div id="cloud-container"></div>
 
   <script>
     const socket = io();
-    const wordCounts = {}; // Store frequencies globally
+    const container = document.getElementById('cloud-container');
+    const wordCache = {};
 
-    function updateWordCloud(words) {
-      // Recalculate full frequency list
-      const localCounts = {};
-
+    function renderWords(words) {
+      const frequency = {};
       words.forEach(word => {
-        localCounts[word] = (localCounts[word] || 0) + 1;
+        frequency[word] = (frequency[word] || 0) + 1;
       });
 
-      // Update global counts (for persistent display)
-      for (const [word, count] of Object.entries(localCounts)) {
-        wordCounts[word] = (wordCounts[word] || 0) + count;
-      }
+      const entries = Object.entries(frequency).sort((a, b) => b[1] - a[1]);
 
-      const entries = Object.entries(wordCounts);
+      entries.forEach(([word, count]) => {
+        const fontSize = `${Math.min(24 + count * 8, 60)}px`;
 
-      if (entries.length === 0) return;
-
-      const canvas = document.getElementById('wordcloud');
-
-      WordCloud(canvas, {
-        list: entries,
-        gridSize: Math.round(16 * canvas.width / 1024),
-        weightFactor: size => Math.pow(size, 1.5),
-        rotateRatio: 0.4,
-        rotationSteps: 2,
-        backgroundColor: "#f0f7ff",
-        color: () => '#2e73f2',
-        fontFamily: 'Inter, sans-serif',
-        drawOutOfBound: false,
-        shuffle: true,
-        origin: [canvas.width / 2, canvas.height / 2],
+        if (wordCache[word]) {
+          const el = wordCache[word];
+          if (el.style.fontSize !== fontSize) {
+            el.style.fontSize = fontSize;
+            el.style.transform = 'scale(1.15)';
+            setTimeout(() => el.style.transform = 'scale(1)', 200);
+          }
+        } else {
+          const span = document.createElement('span');
+          span.className = 'word-box';
+          span.textContent = word;
+          span.style.fontSize = fontSize;
+          container.appendChild(span);
+          wordCache[word] = span;
+        }
       });
     }
 
-    socket.on('newWords', updateWordCloud);
+    socket.on('newWords', renderWords);
   </script>
 </body>
 </html>
+
 
 
