@@ -7,17 +7,17 @@
   <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
       font-family: 'Inter', sans-serif;
       background-color: #f0f7ff;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
     }
-
     #wordcloud {
+      display: block;
       width: 100vw;
       height: 100vh;
     }
@@ -28,20 +28,30 @@
 
   <script>
     const socket = io();
-    const wordCounts = {};
+    const wordCounts = {}; // Store frequencies globally
 
     function updateWordCloud(words) {
-      // Count frequency
+      // Recalculate full frequency list
+      const localCounts = {};
+
       words.forEach(word => {
-        wordCounts[word] = (wordCounts[word] || 0) + 1;
+        localCounts[word] = (localCounts[word] || 0) + 1;
       });
 
-      // Convert to [ [word, freq], ... ]
+      // Update global counts (for persistent display)
+      for (const [word, count] of Object.entries(localCounts)) {
+        wordCounts[word] = (wordCounts[word] || 0) + count;
+      }
+
       const entries = Object.entries(wordCounts);
 
-      WordCloud(document.getElementById('wordcloud'), {
+      if (entries.length === 0) return;
+
+      const canvas = document.getElementById('wordcloud');
+
+      WordCloud(canvas, {
         list: entries,
-        gridSize: Math.round(16 * document.getElementById('wordcloud').width / 1024),
+        gridSize: Math.round(16 * canvas.width / 1024),
         weightFactor: size => Math.pow(size, 1.5),
         rotateRatio: 0.4,
         rotationSteps: 2,
@@ -50,7 +60,7 @@
         fontFamily: 'Inter, sans-serif',
         drawOutOfBound: false,
         shuffle: true,
-        origin: [window.innerWidth / 2, window.innerHeight / 2],
+        origin: [canvas.width / 2, canvas.height / 2],
       });
     }
 
