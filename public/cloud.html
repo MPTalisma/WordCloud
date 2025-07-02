@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Word Cloud – Final Polished</title>
+  <title>GIMS Survey</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
@@ -31,107 +31,122 @@
       rx: 10;
       ry: 10;
     }
+
+    #clearBtn {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      background: #2e73f2;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 99;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    #clearBtn:hover {
+      background-color: #1f5dd6;
+    }
   </style>
 </head>
 <body>
+  <button id="clearBtn">Clear</button>
   <svg id="cloud" width="100%" height="100%"></svg>
 
   <script>
     const socket = io();
     const wordCounts = {};
-    const placedWords = {}; // store layout per word
+    const wordElements = {};
     const width = window.innerWidth;
     const height = window.innerHeight;
 
     const svg = d3.select("#cloud").attr("width", width).attr("height", height);
     const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-    function draw(words) {
-      words.forEach(d => {
-        placedWords[d.text] = { x: d.x, y: d.y };
-      });
-
-      const wordGroups = g.selectAll("g.word")
-        .data(words, d => d.text);
-
-      const enter = wordGroups.enter()
-        .append("g")
+    // Draw words
+    function drawWord(d) {
+      const group = g.append("g")
         .attr("class", "word")
-        .attr("transform", d => `translate(${d.x},${d.y})`);
-
-      // background box
-      enter.append("rect")
-        .attr("x", 0).attr("y", 0)
-        .attr("width", 0).attr("height", 0)
+        .attr("transform", `translate(${d.x},${d.y})`)
         .style("opacity", 0);
 
-      // text
-      enter.append("text")
-        .text(d => d.text)
+      // Placeholder box until we measure text
+      const rect = group.append("rect")
+        .attr("x", 0).attr("y", 0)
+        .attr("width", 0).attr("height", 0);
+
+      const text = group.append("text")
+        .text(d.text)
         .attr("text-anchor", "middle")
         .attr("dy", "0.35em")
-        .style("font-size", d => d.size + "px")
-        .style("opacity", 0)
-        .each(function(d) {
-          const bbox = this.getBBox();
-          d.bbox = bbox;
-        })
-        .transition().duration(400)
-        .style("opacity", 1);
+        .style("font-size", `${d.size}px`);
 
-      enter.select("rect")
-        .transition().duration(400)
-        .attr("x", d => -((d.text.length * d.size * 0.3) / 2) - 8)
-        .attr("y", d => -(d.size / 1.5))
-        .attr("width", d => d.text.length * d.size * 0.3 + 16)
-        .attr("height", d => d.size + 10)
-        .style("opacity", 1);
+      setTimeout(() => {
+        const bbox = text.node().getBBox();
+        rect
+          .attr("x", bbox.x - 10)
+          .attr("y", bbox.y - 6)
+          .attr("width", bbox.width + 20)
+          .attr("height", bbox.height + 12);
+        group.transition().duration(400).style("opacity", 1);
+      }, 10);
 
-      // update font size on re-submission
-      wordGroups.select("text")
-        .transition().duration(300)
-        .style("font-size", d => d.size + "px");
-
-      wordGroups.select("rect")
-        .transition().duration(300)
-        .attr("x", d => -((d.text.length * d.size * 0.3) / 2) - 8)
-        .attr("y", d => -(d.size / 1.5))
-        .attr("width", d => d.text.length * d.size * 0.3 + 16)
-        .attr("height", d => d.size + 10);
-
-      wordGroups.exit()
-        .transition().duration(300)
-        .style("opacity", 0)
-        .remove();
+      wordElements[d.text] = { group, data: d };
     }
 
-    function updateWordCloud(words) {
-      words.forEach(word => {
+    function updateWord(word) {
+      const entry = wordElements[word];
+      const d = entry.data;
+      d.size = Math.min(60, 16 + wordCounts[word] * 8);
+
+      const text = entry.group.select("text")
+        .transition().duration(300)
+        .style("font-size", `${d.size}px`);
+
+      setTimeout(() => {
+        const bbox = entry.group.select("text").node().getBBox();
+        entry.group.select("rect")
+          .transition().duration(300)
+          .attr("x", bbox.x - 10)
+          .attr("y", bbox.y - 6)
+          .attr("width", bbox.width + 20)
+          .attr("height", bbox.height + 12);
+      }, 10);
+    }
+
+    function processWords(newWords) {
+      newWords.forEach(word => {
         wordCounts[word] = (wordCounts[word] || 0) + 1;
+
+        if (wordElements[word]) {
+          updateWord(word);
+        } else {
+          const size = Math.min(60, 16 + wordCounts[word] * 8);
+          d3.layout.cloud()
+            .size([width, height])
+            .words([{ text: word, size }])
+            .padding(10)
+            .rotate(() => 0)
+            .font("Inter")
+            .fontSize(d => d.size)
+            .spiral("archimedean")
+            .on("end", (layoutWords) => drawWord(layoutWords[0]))
+            .start();
+        }
       });
-
-      const entries = Object.entries(wordCounts).map(([text, count]) => ({
-        text,
-        size: Math.min(60, 16 + count * 8)
-      }));
-
-      d3.layout.cloud()
-        .size([width, height])
-        .words(entries)
-        .padding(8)
-        .rotate(() => 0)
-        .font("Inter")
-        .fontSize(d => d.size)
-        .spiral("archimedean")
-        .on("end", draw)
-        .start();
     }
 
-    socket.on("newWords", updateWordCloud);
+    socket.on("newWords", processWords);
+
+    // Clear button
+    document.getElementById("clearBtn").onclick = () => {
+      g.selectAll("g.word").remove();
+      for (const key in wordCounts) delete wordCounts[key];
+      for (const key in wordElements) delete wordElements[key];
+    };
   </script>
 </body>
 </html>
-
-
-
-
