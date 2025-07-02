@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Word Cloud (D3)</title>
+  <title>Slido-Style Word Cloud</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
@@ -17,52 +17,89 @@
       overflow: hidden;
     }
 
-    #cloud {
-      width: 100%;
-      height: 100%;
-    }
-
     text {
       font-family: 'Inter', sans-serif;
+      fill: #2e73f2;
       cursor: default;
       transition: transform 0.3s ease;
+      user-select: none;
+    }
+    rect {
+      fill: white;
+      rx: 12;
+      ry: 12;
+      stroke: #2e73f2;
+      stroke-width: 1;
     }
   </style>
 </head>
 <body>
-  <svg id="cloud"></svg>
+  <svg id="cloud" width="100%" height="100%"></svg>
 
   <script>
     const socket = io();
     const wordCounts = {};
+    let positionedWords = {}; // Persist layout across updates
 
     const width = window.innerWidth;
     const height = window.innerHeight;
+
     const svg = d3.select("#cloud")
                   .attr("width", width)
                   .attr("height", height);
+
     const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
 
     function draw(words) {
-      g.selectAll("text")
-        .data(words, d => d.text)
-        .join(
-          enter => enter.append("text")
-                        .text(d => d.text)
-                        .attr("text-anchor", "middle")
-                        .attr("font-size", d => d.size)
-                        .style("fill", "#2e73f2")
-                        .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
-                        .style("opacity", 0)
-                        .transition().duration(500)
-                        .style("opacity", 1),
-          update => update.transition().duration(500)
-                          .attr("font-size", d => d.size)
-                          .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`),
-          exit => exit.transition().duration(300)
-                      .style("opacity", 0)
-                      .remove()
-        );
+      // Update position memory
+      words.forEach(w => {
+        positionedWords[w.text] = { x: w.x, y: w.y, size: w.size };
+      });
+
+      const wordGroups = g.selectAll("g.word")
+        .data(words, d => d.text);
+
+      const enter = wordGroups.enter()
+        .append("g")
+        .attr("class", "word")
+        .attr("transform", d => `translate(${d.x},${d.y})`);
+
+      // add background box
+      enter.append("rect")
+        .attr("x", d => -d.text.length * 4.5)
+        .attr("y", d => -d.size / 1.8)
+        .attr("width", d => d.text.length * 9 + 12)
+        .attr("height", d => d.size + 6)
+        .style("opacity", 0)
+        .transition().duration(500)
+        .style("opacity", 1);
+
+      // add text
+      enter.append("text")
+        .text(d => d.text)
+        .attr("text-anchor", "middle")
+        .style("font-size", d => d.size)
+        .attr("dy", "0.35em")
+        .style("opacity", 0)
+        .transition().duration(500)
+        .style("opacity", 1);
+
+      // update only size (not position)
+      wordGroups.select("text")
+        .transition().duration(400)
+        .style("font-size", d => d.size);
+
+      wordGroups.select("rect")
+        .transition().duration(400)
+        .attr("width", d => d.text.length * 9 + 12)
+        .attr("height", d => d.size + 6)
+        .attr("x", d => -d.text.length * 4.5)
+        .attr("y", d => -d.size / 1.8);
+
+      wordGroups.exit()
+        .transition().duration(300)
+        .style("opacity", 0)
+        .remove();
     }
 
     function updateWordCloud(allWords) {
@@ -73,16 +110,18 @@
       const entries = Object.entries(wordCounts)
                             .map(([text, count]) => ({
                               text,
-                              size: 12 + count * 10
+                              size: Math.min(60, 14 + count * 8),
+                              ...(positionedWords[text] || {})
                             }));
 
       d3.layout.cloud()
         .size([width, height])
         .words(entries)
-        .padding(5)
-        .rotate(() => ~~(Math.random() * 2) * 90)
+        .padding(10)
+        .rotate(() => 0) // no rotation
         .font("Inter")
         .fontSize(d => d.size)
+        .spiral("archimedean")
         .on("end", draw)
         .start();
     }
