@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Word Cloud – Presenter View</title>
+  <title>GIMS Survey</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
@@ -118,6 +118,9 @@
 
     // This function draws/updates words on the SVG after the layout has run
     function draw(words) {
+        // --- NEW LOG ---
+        console.log("Draw function called with words:", words.map(w => ({text: w.text, x: w.x, y: w.y, size: w.size})));
+
         // Data join: Select existing word groups, bind new data, exit old data
         const wordGroups = g.selectAll("g.word")
             .data(words, d => d.text); // Key function ensures correct data binding
@@ -160,7 +163,7 @@
                     console.warn("Could not get BBox for new word:", d.text, e);
                     group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
                 }
-            }, 20); // <<< REVERTED to 100ms
+            }, 20); // Current delay value (20ms)
         });
 
         // UPDATE selection: Update existing word groups (position, size, rect)
@@ -190,7 +193,7 @@
                 } catch (e) {
                     console.warn("Could not get BBox for word:", d.text, e);
                 }
-            }, 20); // <<< REVERTED to 100ms
+            }, 20); // Current delay value (20ms)
         });
     }
 
@@ -205,7 +208,8 @@
             text: word,
             count: wordCounts[word]
         }));
-
+        // --- NEW LOG ---
+        console.log("Starting layout with data:", dataForCloud.map(d => `${d.text}:${d.count}`));
         layout.words(dataForCloud).start();
     }
 
