@@ -104,7 +104,7 @@
     // --- d3-cloud layout setup ---
     const layout = d3.layout.cloud()
         .size([width, height]) // Set the size of the layout area
-        .padding(5) // Padding between words in the layout algorithm
+        .padding(20) // <<< CHANGED: Increased padding for d3-cloud to account for visual box padding
         .rotate(0) // Crucial: No rotation, words will always be straight
         .font("Inter") // Specify the font for accurate text measurement
         .fontSize(d => getFontSize(d.count)) // Use our function to determine word size
