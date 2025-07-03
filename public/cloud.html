@@ -5,15 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://unpkg.com/d3-cloud@1.2.5/build/d3.layout.cloud.js"></script>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       background: #f0f7ff;
+      /* Ensure 'Inter' font is properly loaded if using for display */
+      /* e.g., via <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500&display=swap" rel="stylesheet"> in the head */
       font-family: 'Inter', sans-serif;
       width: 100vw;
       height: 100vh;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end; /* Push content to the bottom for input */
     }
 
     text {
@@ -22,6 +29,8 @@
       font-weight: 500;
       user-select: none;
       pointer-events: none;
+      /* Smooth transitions for text color/opacity if needed */
+      transition: fill 0.3s ease, opacity 0.3s ease;
     }
 
     rect {
@@ -30,12 +39,22 @@
       stroke-width: 1.5;
       rx: 10;
       ry: 10;
+      /* Smooth transitions for rectangle properties */
+      transition: fill 0.3s ease, stroke 0.3s ease, stroke-width 0.3s ease, rx 0.3s ease, ry 0.3s ease;
     }
 
-    #clearBtn {
+    #controls {
       position: absolute;
       top: 12px;
       right: 20px;
+      left: 20px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      z-index: 100; /* Ensure controls are on top */
+    }
+
+    #clearBtn, #submitBtn {
       background: #2e73f2;
       color: white;
       border: none;
@@ -43,109 +62,217 @@
       padding: 8px 14px;
       font-size: 16px;
       cursor: pointer;
-      z-index: 99;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
 
-    #clearBtn:hover {
+    #clearBtn:hover, #submitBtn:hover {
       background-color: #1f5dd6;
+    }
+
+    #wordInput {
+        padding: 8px 12px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 16px;
+        outline: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        width: 150px; /* Adjust as needed */
+    }
+
+    #cloud {
+        position: absolute; /* Position the SVG absolutely to fill the screen */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1; /* Place it behind the controls */
     }
   </style>
 </head>
 <body>
-  <button id="clearBtn">Clear</button>
+  <div id="controls">
+    <input type="text" id="wordInput" placeholder="Type a word...">
+    <button id="submitBtn">Submit</button>
+    <button id="clearBtn">Clear</button>
+  </div>
   <svg id="cloud" width="100%" height="100%"></svg>
 
   <script>
     const socket = io();
-    const wordCounts = {};
-    const wordElements = {};
+    const wordCounts = {}; // Stores {word: count}
+    const wordElements = {}; // Stores references to D3 group elements for each word
+
     const width = window.innerWidth;
     const height = window.innerHeight;
 
     const svg = d3.select("#cloud").attr("width", width).attr("height", height);
-    const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
+    const g = svg.append("g")
+      .attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-    let spiralAngle = 0;
+    // --- Padding for the word boxes (You can fine-tune these values) ---
+    const xPadding = 10; // Horizontal padding
+    const yPadding = 6;  // Vertical padding
 
-    function getSpiralPosition(radius) {
-      const angle = spiralAngle;
-      spiralAngle += 0.35; // tweak for spacing
-      return {
-        x: radius * Math.cos(angle),
-        y: radius * Math.sin(angle)
-      };
+    // --- d3-cloud layout setup ---
+    // The layout will calculate positions and sizes for words
+    const layout = d3.layout.cloud()
+        .size([width, height]) // Set the size of the layout area
+        .padding(5) // Padding between words in the layout algorithm
+        .rotate(() => ~~(Math.random() * 2) * 90) // Randomly rotate words by 0 or 90 degrees
+        .font("Inter") // Font to use for size calculations
+        .fontSize(d => Math.min(64, 18 + d.count * 8)) // Function to determine word size based on its count
+        .on("end", draw); // Callback when layout calculation is complete
+
+    // This function draws/updates words on the SVG after the layout has run
+    function draw(words) {
+        // Data join: Select existing word groups, bind new data, exit old data
+        const wordGroups = g.selectAll("g.word")
+            .data(words, d => d.text); // Key function ensures correct data binding
+
+        // EXIT selection: Remove groups that are no longer in the data
+        wordGroups.exit()
+            .transition()
+            .duration(400)
+            .style("opacity", 0)
+            .remove();
+
+        // UPDATE selection: Update existing word groups (position, size, rect)
+        wordGroups.transition().duration(600) // Smooth transition for existing words
+            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+            .style("opacity", 1);
+
+        wordGroups.select("text")
+            .transition().duration(600)
+            .style("font-size", d => `${d.size}px`);
+
+        // Re-calculate and update rect for existing words after text size transition
+        wordGroups.each(function(d) {
+            const group = d3.select(this);
+            const text = group.select("text");
+            // Small delay to ensure text has rendered with new size before measuring
+            setTimeout(() => {
+                try {
+                    const bbox = text.node().getBBox();
+                    group.select("rect")
+                        .transition().duration(300)
+                        .attr("x", bbox.x - xPadding)
+                        .attr("y", bbox.y - yPadding)
+                        .attr("width", bbox.width + (2 * xPadding))
+                        .attr("height", bbox.height + (2 * yPadding));
+                } catch (e) {
+                    console.warn("Could not get BBox for word:", d.text, e);
+                    // Fallback or error handling if getBBox fails (e.g., element not yet rendered)
+                }
+            }, 50); // Slightly increased delay for safety
+        });
+
+
+        // ENTER selection: Create new word groups
+        const newWordGroups = wordGroups.enter().append("g")
+            .attr("class", "word")
+            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+            .style("opacity", 0); // Start invisible for fade-in
+
+        newWordGroups.append("text")
+            .attr("text-anchor", "middle")
+            .attr("dy", "0.35em")
+            .text(d => d.text)
+            .style("font-size", d => `${d.size}px`);
+
+        // Insert rect behind text for new words
+        newWordGroups.each(function(d) {
+            const group = d3.select(this);
+            const text = group.select("text");
+            // Small delay to ensure text has rendered before measuring
+            setTimeout(() => {
+                try {
+                    const bbox = text.node().getBBox();
+                    group.insert("rect", "text")
+                        .attr("x", bbox.x - xPadding)
+                        .attr("y", bbox.y - yPadding)
+                        .attr("width", bbox.width + (2 * xPadding))
+                        .attr("height", bbox.height + (2 * yPadding))
+                        .attr("rx", 10) // Ensure rounded corners are applied
+                        .attr("ry", 10);
+                    group.transition().duration(400).style("opacity", 1); // Fade in new words
+                } catch (e) {
+                    console.warn("Could not get BBox for new word:", d.text, e);
+                }
+            }, 50); // Slightly increased delay for safety
+        });
     }
 
-    function drawWord(word) {
-      const fontSize = Math.min(64, 18 + wordCounts[word] * 8);
-      const pos = getSpiralPosition(spiralAngle * 14 + 60); // spiral radius
+    // This function prepares data for d3-cloud layout and starts it
+    function updateLayout() {
+        // Convert wordCounts object into an array of {text: "word", count: N} objects
+        // This is the format d3-cloud expects, where 'count' will be used by our fontSize function
+        const dataForCloud = Object.keys(wordCounts).map(word => ({
+            text: word,
+            count: wordCounts[word]
+        }));
 
-      const group = g.append("g")
-        .attr("class", "word")
-        .attr("transform", `translate(${pos.x},${pos.y})`)
-        .style("opacity", 0);
-
-      const text = group.append("text")
-        .text(word)
-        .attr("text-anchor", "middle")
-        .attr("dy", "0.35em")
-        .style("font-size", `${fontSize}px`);
-
-      setTimeout(() => {
-        const bbox = text.node().getBBox();
-        group.insert("rect", "text")
-          .attr("x", bbox.x - 10)
-          .attr("y", bbox.y - 6)
-          .attr("width", bbox.width + 20)
-          .attr("height", bbox.height + 12);
-
-        group.transition().duration(400).style("opacity", 1);
-      }, 20);
-
-      wordElements[word] = { group, fontSize };
+        layout.words(dataForCloud).start(); // Set data and start the layout
     }
 
-    function growWord(word) {
-      const entry = wordElements[word];
-      const newSize = Math.min(64, 18 + wordCounts[word] * 8);
-      entry.fontSize = newSize;
+    // Socket.IO listener for incoming words from the server
+    socket.on("newWords", incoming => {
+        console.log("Client received words:", incoming);
+        incoming.forEach(word => {
+            wordCounts[word] = (wordCounts[word] || 0) + 1; // Increment count for this word
+        });
+        updateLayout(); // Trigger a re-layout after updating counts
+    });
 
-      const text = entry.group.select("text");
-      text.transition().duration(300).style("font-size", `${newSize}px`);
+    // Socket.IO listener for initial state (if your server sends it)
+    // NOTE: Your server currently sends 'newWords' for initial state,
+    // so this is just an example if you decide to send a different event type.
+    socket.on('initialState', initialCounts => {
+        console.log("Client received initial state:", initialCounts);
+        // This assumes initialState is an object {word: count}
+        // Merge with wordCounts
+        Object.assign(wordCounts, initialCounts);
+        updateLayout();
+    });
 
-      setTimeout(() => {
-        const bbox = text.node().getBBox();
-        entry.group.select("rect")
-          .transition().duration(300)
-          .attr("x", bbox.x - 10)
-          .attr("y", bbox.y - 6)
-          .attr("width", bbox.width + 20)
-          .attr("height", bbox.height + 12);
-      }, 20);
-    }
+    // --- Input and Clear Button Logic ---
+    const wordInput = document.getElementById("wordInput");
+    const submitBtn = document.getElementById("submitBtn");
+    const clearBtn = document.getElementById("clearBtn");
 
-    function updateWords(incoming) {
-      incoming.forEach(word => {
-        wordCounts[word] = (wordCounts[word] || 0) + 1;
-
-        if (wordElements[word]) {
-          growWord(word);
-        } else {
-          drawWord(word);
-        }
-      });
-    }
-
-    socket.on("newWords", updateWords);
-
-    // Clear button
-    document.getElementById("clearBtn").onclick = () => {
-      g.selectAll("g.word").remove();
-      spiralAngle = 0;
-      Object.keys(wordCounts).forEach(k => delete wordCounts[k]);
-      Object.keys(wordElements).forEach(k => delete wordElements[k]);
+    submitBtn.onclick = () => {
+      const word = wordInput.value.trim();
+      if (word) {
+        socket.emit("submitWord", word); // Emit the word to the server
+        wordInput.value = ""; // Clear the input field
+      }
     };
+
+    // Allow pressing Enter key to submit
+    wordInput.addEventListener("keypress", (event) => {
+      if (event.key === "Enter") {
+        submitBtn.click();
+      }
+    });
+
+    clearBtn.onclick = () => {
+      // Clear all word groups with a fade-out effect
+      g.selectAll("g.word").transition().duration(400).style("opacity", 0).remove();
+      // Reset client-side word count
+      Object.keys(wordCounts).forEach(k => delete wordCounts[k]);
+      // Re-run layout with empty data to ensure layout knows it's clear
+      updateLayout();
+      console.log("Word cloud cleared.");
+    };
+
+    // Handle window resize to adjust SVG dimensions and potentially re-layout
+    window.addEventListener('resize', () => {
+        const newWidth = window.innerWidth;
+        const newHeight = window.innerHeight;
+        svg.attr("width", newWidth).attr("height", newHeight);
+        g.attr("transform", `translate(${newWidth / 2}, ${newHeight / 2})`);
+        layout.size([newWidth, newHeight]); // Update layout size
+        updateLayout(); // Re-run layout on resize
+    });
   </script>
 </body>
 </html>
