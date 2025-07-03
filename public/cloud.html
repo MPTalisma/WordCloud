@@ -160,7 +160,7 @@
                     console.warn("Could not get BBox for new word:", d.text, e);
                     group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
                 }
-            }, 100); // <<< CHANGED from 50 to 100ms
+            }, 150); // <<< CHANGED from 50 to 100ms
         });
 
         // UPDATE selection: Update existing word groups (position, size, rect)
@@ -190,7 +190,7 @@
                 } catch (e) {
                     console.warn("Could not get BBox for word:", d.text, e);
                 }
-            }, 100); // <<< CHANGED from 50 to 100ms
+            }, 150); // <<< CHANGED from 50 to 150ms
         });
     }
 
