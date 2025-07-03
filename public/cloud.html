@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GIMS Survey</title>
+  <title>Live Word Cloud – Presenter View</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
@@ -37,7 +37,8 @@
       stroke-width: 1.5;
       rx: 10;
       ry: 10;
-      transition: x 0.3s ease, y 0.3s ease, width 0.3s ease, height 0.3s ease; /* Smooth box transitions */
+      /* Only transition width/height if needed, x/y are handled by group transform */
+      transition: width 0.3s ease, height 0.3s ease;
     }
 
     #controls {
@@ -110,7 +111,7 @@
     // --- d3-cloud layout setup ---
     const layout = d3.layout.cloud()
         .size([width, height]) // Set the size of the layout area
-        .padding(35) // Using the new padding value you tested
+        .padding(10) // <<< CHANGED FROM 35 TO 10
         .rotate(0) // Crucial: No rotation, words will always be straight
         .font("Inter") // Specify the font for accurate text measurement
         .fontSize(d => getFontSize(d.count)) // Use our function to determine word size
@@ -118,7 +119,6 @@
 
     // This function draws/updates words on the SVG after the layout has run
     function draw(words) {
-        // --- NEW LOG ---
         console.log("Draw function called with words:", words.map(w => ({text: w.text, x: w.x, y: w.y, size: w.size})));
 
         // Data join: Select existing word groups, bind new data, exit old data
@@ -136,65 +136,56 @@
         const newWordGroups = wordGroups.enter().append("g")
             .attr("class", "word")
             // Initial position for new words, they will transition to their layout position
-            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
-            .style("opacity", 0); // Start invisible for fade-in
+            // Set initial opacity to 0 here for both new and updated words
+            .style("opacity", 0); 
 
         newWordGroups.append("text")
             .attr("text-anchor", "middle")
             .attr("dy", "0.35em")
-            .text(d => d.text)
-            .style("font-size", d => `${d.size}px`); // d.size is calculated by d3-cloud
+            .text(d => d.text); // Font size will be set on the merged selection
 
-        // Append rect after a short delay for new words, then fade in
-        newWordGroups.each(function(d) {
-            const group = d3.select(this);
-            const text = group.select("text");
-            // Use a small timeout to ensure text has rendered before getBBox()
-            setTimeout(() => {
-                try {
-                    const bbox = text.node().getBBox();
-                    group.insert("rect", "text") // Insert rect before text to be behind it
-                        .attr("x", bbox.x - xPadding)
-                        .attr("y", bbox.y - yPadding)
-                        .attr("width", bbox.width + (2 * xPadding))
-                        .attr("height", bbox.height + (2 * yPadding));
-                    group.transition().duration(400).style("opacity", 1); // Fade in
-                } catch (e) {
-                    console.warn("Could not get BBox for new word:", d.text, e);
-                    group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
-                }
-            }, 20); // Current delay value (20ms)
-        });
-
-        // UPDATE selection: Update existing word groups (position, size, rect)
+        // MERGE ENTER and UPDATE selections to apply common properties and transitions
         const allWordGroups = wordGroups.merge(newWordGroups);
 
-        allWordGroups.transition().duration(600)
-            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`); // Use layout calculated x,y,rotate
-
+        // First, apply font size to text elements for accurate getBBox()
         allWordGroups.select("text")
-            .transition().duration(600)
-            .style("font-size", d => `${d.size}px`); // Use layout calculated size
+            .style("font-size", d => `${d.size}px`); // d.size is calculated by d3-cloud
 
-        // Update rect for all words after text size transition
+        // Create or update rect elements.
+        // We ensure rect is always behind text using insert.
         allWordGroups.each(function(d) {
             const group = d3.select(this);
             const text = group.select("text");
-            // Small delay to ensure text has rendered with new size before measuring
-            setTimeout(() => {
-                try {
-                    const bbox = text.node().getBBox();
-                    group.select("rect")
-                        .transition().duration(300)
-                        .attr("x", bbox.x - xPadding)
-                        .attr("y", bbox.y - yPadding)
-                        .attr("width", bbox.width + (2 * xPadding))
-                        .attr("height", bbox.height + (2 * yPadding));
-                } catch (e) {
-                    console.warn("Could not get BBox for word:", d.text, e);
-                }
-            }, 20); // Current delay value (20ms)
+            let rect = group.select("rect");
+
+            // If rect doesn't exist, create it
+            if (rect.empty()) {
+                rect = group.insert("rect", "text"); // Insert rect before text
+            }
+            
+            try {
+                // getBBox should be reliable immediately after font-size is applied
+                const bbox = text.node().getBBox();
+                rect.attr("x", bbox.x - xPadding)
+                    .attr("y", bbox.y - yPadding)
+                    .attr("width", bbox.width + (2 * xPadding))
+                    .attr("height", bbox.height + (2 * yPadding));
+            } catch (e) {
+                console.warn("Could not get BBox for word:", d.text, e);
+                // Fallback for rect dimensions if getBBox fails
+                rect.attr("x", -50) // Example fallback
+                    .attr("y", -15)
+                    .attr("width", 100)
+                    .attr("height", 30);
+            }
         });
+
+
+        // Now apply transitions for position and opacity for all words (new and existing)
+        allWordGroups.transition()
+            .duration(600) // Control transition speed
+            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+            .style("opacity", 1); // Fade in words to full opacity
     }
 
     // This function prepares data for d3-cloud layout and starts it
@@ -208,7 +199,6 @@
             text: word,
             count: wordCounts[word]
         }));
-        // --- NEW LOG ---
         console.log("Starting layout with data:", dataForCloud.map(d => `${d.text}:${d.count}`));
         layout.words(dataForCloud).start();
     }
