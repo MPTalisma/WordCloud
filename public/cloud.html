@@ -111,7 +111,7 @@
     // --- d3-cloud layout setup ---
     const layout = d3.layout.cloud()
         .size([width, height]) // Set the size of the layout area
-        .padding(25) // <<< CHANGED FROM TO 25
+        .padding(20) // <<< CHANGED TO 20
         .rotate(0) // Crucial: No rotation, words will always be straight
         .font("Inter") // Specify the font for accurate text measurement
         .fontSize(d => getFontSize(d.count)) // Use our function to determine word size
@@ -120,6 +120,13 @@
     // This function draws/updates words on the SVG after the layout has run
     function draw(words) {
         console.log("Draw function called with words:", words.map(w => ({text: w.text, x: w.x, y: w.y, size: w.size})));
+
+        // --- NEW DIAGNOSTIC LOG (to check individual word data) ---
+        words.forEach(word => {
+            console.log(`Word: ${word.text}, X: ${word.x}, Y: ${word.y}, Size: ${word.size}`);
+        });
+        // --- END NEW DIAGNOSTIC LOG ---
+
 
         // Data join: Select existing word groups, bind new data, exit old data
         const wordGroups = g.selectAll("g.word")
@@ -135,9 +142,8 @@
         // ENTER selection: Create new word groups
         const newWordGroups = wordGroups.enter().append("g")
             .attr("class", "word")
-            // Initial position for new words, they will transition to their layout position
-            // Set initial opacity to 0 here for both new and updated words
-            .style("opacity", 0); 
+            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`) // Set initial transform to calculated position
+            .style("opacity", 0); // Start invisible for fade-in
 
         newWordGroups.append("text")
             .attr("text-anchor", "middle")
@@ -149,7 +155,7 @@
 
         // First, apply font size to text elements for accurate getBBox()
         allWordGroups.select("text")
-            .style("font-size", d => `${d.size}px`); // d.size is calculated by d3-cloud
+            .style("font-size", d => `${d.size}px`);
 
         // Create or update rect elements.
         // We ensure rect is always behind text using insert.
@@ -180,11 +186,10 @@
             }
         });
 
-
-        // Now apply transitions for position and opacity for all words (new and existing)
+        // Now apply transitions for opacity for new words and transform for all
         allWordGroups.transition()
             .duration(600) // Control transition speed
-            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+            .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`) // Update transform for all
             .style("opacity", 1); // Fade in words to full opacity
     }
 
