@@ -96,6 +96,12 @@
     const xPadding = 12; // Horizontal padding
     const yPadding = 7;  // Vertical padding
 
+    // Flag to ensure layout only runs once fonts are ready for initial display
+    let fontsReady = false;
+    // Queue for words received before fonts are ready
+    let pendingWords = [];
+
+
     // Function to calculate font size based on word count
     function getFontSize(count) {
         return Math.min(64, 18 + count * 8); // Capped at 64px
@@ -104,7 +110,7 @@
     // --- d3-cloud layout setup ---
     const layout = d3.layout.cloud()
         .size([width, height]) // Set the size of the layout area
-        .padding(35) // <<< CHANGED: Increased padding for d3-cloud to account for visual box padding
+        .padding(35) // Using the new padding value you tested
         .rotate(0) // Crucial: No rotation, words will always be straight
         .font("Inter") // Specify the font for accurate text measurement
         .fontSize(d => getFontSize(d.count)) // Use our function to determine word size
@@ -127,7 +133,6 @@
         const newWordGroups = wordGroups.enter().append("g")
             .attr("class", "word")
             // Initial position for new words, they will transition to their layout position
-            // Use d.x0, d.y0 if you want them to originate from a fixed point before moving
             .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
             .style("opacity", 0); // Start invisible for fade-in
 
@@ -138,11 +143,10 @@
             .style("font-size", d => `${d.size}px`); // d.size is calculated by d3-cloud
 
         // Append rect after a short delay for new words, then fade in
-        // Use .each to access the specific group for new elements
         newWordGroups.each(function(d) {
             const group = d3.select(this);
             const text = group.select("text");
-            // Use a small timeout to ensure text has rendered before getBBox()
+            // Use a small timeout to ensure text has rendered with new size before getBBox()
             setTimeout(() => {
                 try {
                     const bbox = text.node().getBBox();
@@ -160,7 +164,6 @@
         });
 
         // UPDATE selection: Update existing word groups (position, size, rect)
-        // Merge enter and update selections to apply transitions to all
         const allWordGroups = wordGroups.merge(newWordGroups);
 
         allWordGroups.transition().duration(600)
@@ -193,13 +196,18 @@
 
     // This function prepares data for d3-cloud layout and starts it
     function updateLayout() {
-        // Convert wordCounts object into an array of {text: "word", count: N} objects
+        // Only run layout if fonts are ready, or if it's not the initial load
+        if (!fontsReady && Object.keys(wordCounts).length === 0) { // If fonts not ready AND it's initial empty state
+            // Don't run layout yet, wait for font.ready
+            return;
+        }
+
         const dataForCloud = Object.keys(wordCounts).map(word => ({
             text: word,
-            count: wordCounts[word] // 'count' will be used by our fontSize function
+            count: wordCounts[word]
         }));
 
-        layout.words(dataForCloud).start(); // Set data and start the layout calculation
+        layout.words(dataForCloud).start();
     }
 
     // Socket.IO listener for incoming words from the server
@@ -207,10 +215,16 @@
         console.log("Client received new words:", incoming);
         let changed = false;
         incoming.forEach(word => {
-            wordCounts[word] = (wordCounts[word] || 0) + 1; // Increment count for this word
-            changed = true; // Mark as changed if any word count is updated
+            // Check if fonts are ready. If not, queue words for later processing
+            if (!fontsReady) {
+                pendingWords.push(word);
+            } else {
+                wordCounts[word] = (wordCounts[word] || 0) + 1;
+                changed = true;
+            }
         });
-        if (changed) {
+
+        if (fontsReady && changed) {
             updateLayout(); // Trigger a re-layout after updating counts
         }
     });
@@ -218,13 +232,10 @@
     // --- Clear Button Logic for Presenter ---
     const clearBtn = document.getElementById("clearBtn");
     clearBtn.onclick = () => {
-      // Clear all word groups with a fade-out effect on the client
       g.selectAll("g.word").transition().duration(400).style("opacity", 0).remove();
-      // Reset client-side word count
       Object.keys(wordCounts).forEach(k => delete wordCounts[k]);
-      // Also tell the server to clear its word counts
       socket.emit('clearCloud');
-      // Re-run layout with empty data to ensure layout knows it's clear
+      pendingWords = []; // Clear pending words as well
       updateLayout();
       console.log("Word cloud cleared.");
     };
@@ -239,10 +250,25 @@
         updateLayout(); // Re-run layout on resize
     });
 
-    // Ensure fonts are loaded before attempting to measure text (optional but robust)
+    // Ensure fonts are loaded before attempting to measure text (crucial fix)
     document.fonts.ready.then(() => {
         console.log('All fonts (including Inter) loaded!');
-        // No initial words drawn here; relying on server sending initial state via 'newWords'
+        fontsReady = true; // Set flag
+        // Process any words that arrived before fonts were ready
+        if (pendingWords.length > 0) {
+            console.log("Processing pending words after font load.");
+            pendingWords.forEach(word => {
+                wordCounts[word] = (wordCounts[word] || 0) + 1;
+            });
+            pendingWords = []; // Clear the queue
+            updateLayout(); // Trigger layout with all initial words
+        } else {
+            // If no pending words, ensure an initial layout runs if wordCounts isn't empty
+            // (e.g., if a client connects and the server sends existing words)
+            if (Object.keys(wordCounts).length > 0) {
+                updateLayout();
+            }
+        }
     }).catch(err => {
         console.error("Font loading error:", err);
     });
