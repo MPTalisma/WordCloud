@@ -142,25 +142,23 @@
             .text(d => d.text)
             .style("font-size", d => `${d.size}px`); // d.size is calculated by d3-cloud
 
-        // Append rect after a short delay for new words, then fade in
+        // Append rect immediately after text for new words, then fade in
         newWordGroups.each(function(d) {
             const group = d3.select(this);
             const text = group.select("text");
-            // Use a small timeout to ensure text has rendered before getBBox()
-            setTimeout(() => {
-                try {
-                    const bbox = text.node().getBBox();
-                    group.insert("rect", "text") // Insert rect before text to be behind it
-                        .attr("x", bbox.x - xPadding)
-                        .attr("y", bbox.y - yPadding)
-                        .attr("width", bbox.width + (2 * xPadding))
-                        .attr("height", bbox.height + (2 * yPadding));
-                    group.transition().duration(400).style("opacity", 1); // Fade in
-                } catch (e) {
-                    console.warn("Could not get BBox for new word:", d.text, e);
-                    group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
-                }
-            }, 150); // <<< CHANGED from 50 to 100ms
+            try {
+                // Removed setTimeout. Call getBBox() directly.
+                const bbox = text.node().getBBox();
+                group.insert("rect", "text") // Insert rect before text to be behind it
+                    .attr("x", bbox.x - xPadding)
+                    .attr("y", bbox.y - yPadding)
+                    .attr("width", bbox.width + (2 * xPadding))
+                    .attr("height", bbox.height + (2 * yPadding));
+                group.transition().duration(400).style("opacity", 1); // Fade in
+            } catch (e) {
+                console.warn("Could not get BBox for new word (immediate call):", d.text, e);
+                group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
+            }
         });
 
         // UPDATE selection: Update existing word groups (position, size, rect)
@@ -173,24 +171,22 @@
             .transition().duration(600)
             .style("font-size", d => `${d.size}px`); // Use layout calculated size
 
-        // Update rect for all words after text size transition
+        // Update rect for all words immediately after text size transition
         allWordGroups.each(function(d) {
             const group = d3.select(this);
             const text = group.select("text");
-            // Small delay to ensure text has rendered with new size before measuring
-            setTimeout(() => {
-                try {
-                    const bbox = text.node().getBBox();
-                    group.select("rect")
-                        .transition().duration(300)
-                        .attr("x", bbox.x - xPadding)
-                        .attr("y", bbox.y - yPadding)
-                        .attr("width", bbox.width + (2 * xPadding))
-                        .attr("height", bbox.height + (2 * yPadding));
-                } catch (e) {
-                    console.warn("Could not get BBox for word:", d.text, e);
-                }
-            }, 150); // <<< CHANGED from 50 to 150ms
+            try {
+                // Removed setTimeout. Call getBBox() directly.
+                const bbox = text.node().getBBox();
+                group.select("rect")
+                    .transition().duration(300)
+                    .attr("x", bbox.x - xPadding)
+                    .attr("y", bbox.y - yPadding)
+                    .attr("width", bbox.width + (2 * xPadding))
+                    .attr("height", bbox.height + (2 * yPadding));
+            } catch (e) {
+                console.warn("Could not get BBox for word (immediate call):", d.text, e);
+            }
         });
     }
 
