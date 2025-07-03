@@ -7,9 +7,8 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Change wordData from an array to an object/Map to store counts
 // { "word": count, "anotherword": count }
-let wordCounts = {}; // Renamed from wordData for clarity
+let wordCounts = {}; // Stores the global word counts
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -34,7 +33,6 @@ app.post('/submit', (req, res) => {
         wordsToEmit.push(lowerWord2); // Add to the list of words to emit
     }
 
-    // --- THE FIX ---
     // Emit only the words that were just submitted and whose counts were incremented
     if (wordsToEmit.length > 0) {
         io.emit('newWords', wordsToEmit);
@@ -45,26 +43,32 @@ app.post('/submit', (req, res) => {
 
 io.on('connection', socket => {
     console.log(`User connected: ${socket.id}`);
+
     // When a new client connects, send them the *entire current state* of word counts
     // so they can build the initial word cloud.
-    // The client's updateWords function expects an array of strings.
-    // We need to send an array where each word appears 'count' times,
-    // or modify the client to accept a {word: count} object for initial state.
-
-    // Option 1 (Matches current client `updateWords` expecting array of words)
-    // This is less efficient for large counts but works directly with your current client.
     const initialWordsForClient = [];
     for (const word in wordCounts) {
         for (let i = 0; i < wordCounts[word]; i++) {
             initialWordsForClient.push(word);
         }
     }
-    socket.emit('newWords', initialWordsForClient);
+    socket.emit('newWords', initialWordsForClient); // Client's updateWords function processes this array
 
+    // --- ADDED THIS PART ---
+    // Handle client-side 'clearCloud' event from the presenter
+    socket.on('clearCloud', () => {
+        console.log('Clear cloud request received from presenter.');
+        wordCounts = {}; // Clear server's stored word counts
+        io.emit('newWords', []); // Tell ALL connected clients to clear their words by sending an empty array
+    });
+    // --- END ADDED PART ---
 
-    // Option 2 (More efficient, but requires minor client-side change for initial state)
-    // socket.emit('initialWordCounts', wordCounts); // Client needs a new handler for 'initialWordCounts'
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
+    });
 });
 
-const port = process.env.PORT || 3000;
-server.listen(port, () => console.log(`Server running on port ${port}`));
+const PORT = process.env.PORT || 3000; // Use PORT from environment or default to 3000
+server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+});
