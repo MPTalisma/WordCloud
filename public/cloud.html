@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GIMS Survey</title>
+  <title>Live Word Cloud – Final Final</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
-  <script src="https://unpkg.com/d3-cloud/build/d3.layout.cloud.js"></script>
   <style>
     html, body {
       margin: 0;
@@ -22,6 +21,7 @@
       fill: #2e73f2;
       font-weight: 500;
       user-select: none;
+      pointer-events: none;
     }
 
     rect {
@@ -34,7 +34,7 @@
 
     #clearBtn {
       position: absolute;
-      top: 10px;
+      top: 12px;
       right: 20px;
       background: #2e73f2;
       color: white;
@@ -66,86 +66,85 @@
     const svg = d3.select("#cloud").attr("width", width).attr("height", height);
     const g = svg.append("g").attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-    // Draw words
-    function drawWord(d) {
+    let spiralAngle = 0;
+
+    function getSpiralPosition(radius) {
+      const angle = spiralAngle;
+      spiralAngle += 0.35; // tweak for spacing
+      return {
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle)
+      };
+    }
+
+    function drawWord(word) {
+      const fontSize = Math.min(64, 18 + wordCounts[word] * 8);
+      const pos = getSpiralPosition(spiralAngle * 14 + 60); // spiral radius
+
       const group = g.append("g")
         .attr("class", "word")
-        .attr("transform", `translate(${d.x},${d.y})`)
+        .attr("transform", `translate(${pos.x},${pos.y})`)
         .style("opacity", 0);
 
-      // Placeholder box until we measure text
-      const rect = group.append("rect")
-        .attr("x", 0).attr("y", 0)
-        .attr("width", 0).attr("height", 0);
-
       const text = group.append("text")
-        .text(d.text)
+        .text(word)
         .attr("text-anchor", "middle")
         .attr("dy", "0.35em")
-        .style("font-size", `${d.size}px`);
+        .style("font-size", `${fontSize}px`);
 
       setTimeout(() => {
         const bbox = text.node().getBBox();
-        rect
+        group.insert("rect", "text")
           .attr("x", bbox.x - 10)
           .attr("y", bbox.y - 6)
           .attr("width", bbox.width + 20)
           .attr("height", bbox.height + 12);
-        group.transition().duration(400).style("opacity", 1);
-      }, 10);
 
-      wordElements[d.text] = { group, data: d };
+        group.transition().duration(400).style("opacity", 1);
+      }, 20);
+
+      wordElements[word] = { group, fontSize };
     }
 
-    function updateWord(word) {
+    function growWord(word) {
       const entry = wordElements[word];
-      const d = entry.data;
-      d.size = Math.min(60, 16 + wordCounts[word] * 8);
+      const newSize = Math.min(64, 18 + wordCounts[word] * 8);
+      entry.fontSize = newSize;
 
-      const text = entry.group.select("text")
-        .transition().duration(300)
-        .style("font-size", `${d.size}px`);
+      const text = entry.group.select("text");
+      text.transition().duration(300).style("font-size", `${newSize}px`);
 
       setTimeout(() => {
-        const bbox = entry.group.select("text").node().getBBox();
+        const bbox = text.node().getBBox();
         entry.group.select("rect")
           .transition().duration(300)
           .attr("x", bbox.x - 10)
           .attr("y", bbox.y - 6)
           .attr("width", bbox.width + 20)
           .attr("height", bbox.height + 12);
-      }, 10);
+      }, 20);
     }
 
-    function processWords(newWords) {
-      newWords.forEach(word => {
+    function updateWords(incoming) {
+      incoming.forEach(word => {
         wordCounts[word] = (wordCounts[word] || 0) + 1;
 
         if (wordElements[word]) {
-          updateWord(word);
+          growWord(word);
         } else {
-          const size = Math.min(60, 16 + wordCounts[word] * 8);
-          d3.layout.cloud()
-            .size([width, height])
-            .words([{ text: word, size }])
-            .padding(10)
-            .rotate(() => 0)
-            .font("Inter")
-            .fontSize(d => d.size)
-            .spiral("archimedean")
-            .on("end", (layoutWords) => drawWord(layoutWords[0]))
-            .start();
+          drawWord(word);
         }
       });
     }
 
-    socket.on("newWords", processWords);
+    socket.on("newWords", updateWords);
 
     // Clear button
     document.getElementById("clearBtn").onclick = () => {
       g.selectAll("g.word").remove();
-      for (const key in wordCounts) delete wordCounts[key];
-      for (const key in wordElements) delete wordElements[key];
+      spiralAngle = 0;
+      Object.keys(wordCounts).forEach(k => delete wordCounts[k]);
+      Object.keys(wordElements).forEach(k => delete wordElements[k]);
     };
   </script>
 </body>
