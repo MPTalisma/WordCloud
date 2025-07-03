@@ -146,7 +146,7 @@
         newWordGroups.each(function(d) {
             const group = d3.select(this);
             const text = group.select("text");
-            // Use a small timeout to ensure text has rendered with new size before getBBox()
+            // Use a small timeout to ensure text has rendered before getBBox()
             setTimeout(() => {
                 try {
                     const bbox = text.node().getBBox();
@@ -160,7 +160,7 @@
                     console.warn("Could not get BBox for new word:", d.text, e);
                     group.transition().duration(400).style("opacity", 1); // Fade in even if bbox fails
                 }
-            }, 50); // Delay for BBox accuracy
+            }, 100); // <<< CHANGED from 50 to 100ms
         });
 
         // UPDATE selection: Update existing word groups (position, size, rect)
@@ -190,15 +190,14 @@
                 } catch (e) {
                     console.warn("Could not get BBox for word:", d.text, e);
                 }
-            }, 50); // Slightly increased delay for safety
+            }, 100); // <<< CHANGED from 50 to 100ms
         });
     }
 
     // This function prepares data for d3-cloud layout and starts it
     function updateLayout() {
-        // Only run layout if fonts are ready, or if it's not the initial load
-        if (!fontsReady && Object.keys(wordCounts).length === 0) { // If fonts not ready AND it's initial empty state
-            // Don't run layout yet, wait for font.ready
+        // Only run layout if fonts are ready, or if it's not the initial load being blocked
+        if (!fontsReady && Object.keys(wordCounts).length === 0 && pendingWords.length === 0) {
             return;
         }
 
@@ -215,7 +214,6 @@
         console.log("Client received new words:", incoming);
         let changed = false;
         incoming.forEach(word => {
-            // Check if fonts are ready. If not, queue words for later processing
             if (!fontsReady) {
                 pendingWords.push(word);
             } else {
@@ -225,7 +223,7 @@
         });
 
         if (fontsReady && changed) {
-            updateLayout(); // Trigger a re-layout after updating counts
+            updateLayout();
         }
     });
 
@@ -235,7 +233,7 @@
       g.selectAll("g.word").transition().duration(400).style("opacity", 0).remove();
       Object.keys(wordCounts).forEach(k => delete wordCounts[k]);
       socket.emit('clearCloud');
-      pendingWords = []; // Clear pending words as well
+      pendingWords = [];
       updateLayout();
       console.log("Word cloud cleared.");
     };
@@ -246,26 +244,24 @@
         const newHeight = window.innerHeight;
         svg.attr("width", newWidth).attr("height", newHeight);
         g.attr("transform", `translate(${newWidth / 2}, ${newHeight / 2})`);
-        layout.size([newWidth, newHeight]); // Update layout size
-        updateLayout(); // Re-run layout on resize
+        layout.size([newWidth, newHeight]);
+        updateLayout();
     });
 
     // Ensure fonts are loaded before attempting to measure text (crucial fix)
     document.fonts.ready.then(() => {
         console.log('All fonts (including Inter) loaded!');
-        fontsReady = true; // Set flag
-        // Process any words that arrived before fonts were ready
+        fontsReady = true;
         if (pendingWords.length > 0) {
             console.log("Processing pending words after font load.");
             pendingWords.forEach(word => {
                 wordCounts[word] = (wordCounts[word] || 0) + 1;
             });
-            pendingWords = []; // Clear the queue
-            updateLayout(); // Trigger layout with all initial words
+            pendingWords = [];
+            updateLayout();
         } else {
-            // If no pending words, ensure an initial layout runs if wordCounts isn't empty
-            // (e.g., if a client connects and the server sends existing words)
             if (Object.keys(wordCounts).length > 0) {
+                 console.log("Triggering layout for existing words after font load.");
                 updateLayout();
             }
         }
