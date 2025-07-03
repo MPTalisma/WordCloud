@@ -111,7 +111,7 @@
     // --- d3-cloud layout setup ---
     const layout = d3.layout.cloud()
         .size([width, height]) // Set the size of the layout area
-        .padding(10) // <<< CHANGED FROM 35 TO 10
+        .padding(25) // <<< CHANGED FROM TO 25
         .rotate(0) // Crucial: No rotation, words will always be straight
         .font("Inter") // Specify the font for accurate text measurement
         .fontSize(d => getFontSize(d.count)) // Use our function to determine word size
